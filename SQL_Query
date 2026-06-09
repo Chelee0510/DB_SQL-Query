@@ -1,0 +1,31 @@
+-- =========================================================================
+-- [Create] 新增飼主與寵物
+-- =========================================================================
+
+START TRANSACTION;
+-- 新增飼主
+INSERT INTO Owners (Full_Name, Phone_Number, Email_Address, Physical_Address, Is_Anonymized) 
+VALUES (:full_name, :phone_number, :email, :address, FALSE);
+
+-- 獲取自動生成的 ID
+SET @new_owner_id = LAST_INSERT_ID();
+
+-- 綁定 Owner_ID 新增寵物
+INSERT INTO PetBase (Owner_ID, Pet_Name, Species_Type, Breed_Name, Birth_Date, Current_Weight) 
+VALUES (@new_owner_id, :pet_name, :species, :breed, :birth_date, :weight);
+COMMIT;
+
+-- =========================================================================
+-- [Read] 條件查詢飼主與寵物 *用電話號碼進行查詢
+-- =========================================================================
+
+SELECT 
+    o.Owner_ID, o.Full_Name, o.Phone_Number, o.Email_Address,
+    p.Pet_ID, p.Pet_Name, p.Species_Type, p.Current_Weight,
+    TIMESTAMPDIFF(YEAR, p.Birth_Date, CURDATE()) AS Age
+FROM Owners o
+LEFT JOIN PetBase p ON o.Owner_ID = p.Owner_ID
+WHERE o.Phone_Number = :search_phone 
+  AND o.Is_Anonymized = FALSE;
+
+
