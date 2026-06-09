@@ -1,5 +1,5 @@
 -- =========================================================================
--- 飼主與寵物管理 (Owners & PetBase) *櫃台人員負責
+-- 1. 飼主與寵物管理 (Owners & PetBase) *櫃台人員負責
 -- =========================================================================
 
 -- [Create] 新增飼主與寵物
@@ -53,7 +53,7 @@ WHERE Owner_ID = :owner_id;
 
 
 -- =========================================================================
--- 預約排程 (Appointments) *櫃台人員負責
+-- 2. 預約排程 (Appointments) *櫃台人員負責
 -- =========================================================================
 
 -- [Create] 預約(有避免時段重複機制)
@@ -95,8 +95,9 @@ UPDATE Appointments
 SET Appt_Status = 2 
 WHERE Appointment_ID = :appt_id;
 
+
 -- =========================================================================
--- 人員與權限管理 (Staff & Doctors) *管理人員負責
+-- 3. 人員與權限管理 (Staff & Doctors) *管理人員負責
 -- =========================================================================
 
 
@@ -138,7 +139,7 @@ WHERE Staff_ID = :staff_id;
 
 
 -- =========================================================================
--- 服務目錄與庫存模組 (Catalog_Items) *管理人員負責
+-- 4. 服務目錄與庫存模組 (Catalog_Items) *管理人員負責
 -- =========================================================================
 
 
@@ -184,18 +185,81 @@ SET Is_Discontinued = TRUE
 WHERE Item_ID = :item_id;
 
 
+-- =========================================================================
+-- 5. 病歷與治療明細 (Medical_Records & Treatment_Details) *醫生負責
+-- =========================================================================
 
 
+-- [Create] 建立病歷並開立處方
+
+-- 初始化病歷主檔
+INSERT INTO Medical_Records (Appointment_ID, Consultation_Date, Clinical_Notes, Final_Diagnosis, Record_Locked) 
+VALUES (:appt_id, CURDATE(), :notes, :diagnosis, FALSE);
+
+SET @record_id = LAST_INSERT_ID();
+
+-- 新增明細 (Historical_Price 傳 0，交由trigger代入實際價格)
+INSERT INTO Treatment_Details (Record_ID, Item_ID, Historical_Price, Numeric_Value, Polymorphic_Text1, Polymorphic_Text2) 
+VALUES (:record_id, :item_id, 0, :numeric_value, :text1, :text2);
 
 
+-- [Read] 調閱特定病歷內容與明細
+
+SELECT mr.Clinical_Notes, mr.Final_Diagnosis, 
+       c.Item_Name, td.Numeric_Value, td.Polymorphic_Text1, td.Polymorphic_Text2
+FROM Medical_Records mr
+JOIN Treatment_Details td ON mr.Record_ID = td.Record_ID
+JOIN Catalog_Items c ON td.Item_ID = c.Item_ID
+WHERE mr.Record_ID = :record_id;
 
 
+-- [Update] 修改臨床筆記與鎖定病歷
+
+UPDATE Medical_Records 
+SET Clinical_Notes = :new_notes, 
+    Final_Diagnosis = :new_diagnosis,
+    Record_Locked = :is_locked
+WHERE Record_ID = :record_id;
 
 
+-- [Delete] 刪除開錯的治療明細（僅限於病歷鎖定前執行，刪除後trigger會更新帳單）
+
+DELETE FROM Treatment_Details 
+WHERE Detail_ID = :detail_id AND Record_ID = :record_id;
 
 
+-- =========================================================================
+-- 6. 帳單收銀 (Invoices)
+-- =========================================================================
 
 
+-- [Create] 初始化帳單
+
+INSERT INTO Invoices (Record_ID, Total_Billed, Payment_Status) 
+VALUES (:record_id, 0.00, 0);
+
+
+-- [Read] 調閱特定狀態的帳單
+
+SELECT Invoice_ID, Total_Billed, Payment_Status, Payment_Method
+FROM Invoices
+WHERE Payment_Status = :target_status; 
+-- 傳入 0: 待結帳, 1: 已結帳
+
+
+-- [Update] 結帳付款操作
+
+UPDATE Invoices 
+SET Payment_Status = 1, 
+    Payment_Method = :payment_method 
+WHERE Invoice_ID = :invoice_id AND Payment_Status = 0;
+
+
+-- [Delete] 帳單作廢
+
+UPDATE Invoices 
+SET Payment_Status = 2 
+WHERE Invoice_ID = :invoice_id;
 
 
 
